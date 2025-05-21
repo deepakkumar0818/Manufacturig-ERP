@@ -299,7 +299,7 @@ const Home = () => {
               </div>
               <div className="ml-2 md:ml-3 tablet-logo-area">
                 <h1 className="text-lg md:text-xl font-bold text-white tracking-tight">
-                  <span className="text-blue-300">SavantsX</span> <span className="hidden sm:inline">Manufacturing ERP</span>
+                  <span className="text-blue-300"></span>Manufacturing ERP<span className="hidden sm:inline">Manufacturing ERP</span>
                 </h1>
               </div>
             </div>
