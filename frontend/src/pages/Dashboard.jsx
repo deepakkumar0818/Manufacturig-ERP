@@ -1,8 +1,79 @@
 /* eslint-disable */
 import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 /* eslint-enable */
 
 const Dashboard = () => {
+  // State for real-time data
+  const [enquiryStats, setEnquiryStats] = useState([
+    { status: 'Open', count: 0, color: 'bg-blue-500' },
+    { status: 'Quoted', count: 0, color: 'bg-green-500' },
+    { status: 'Converted', count: 0, color: 'bg-yellow-500' },
+    { status: 'Closed', count: 0, color: 'bg-red-500' },
+  ]);
+  
+  const [totalEnquiries, setTotalEnquiries] = useState(0);
+  const [loading, setLoading] = useState(true);
+  
+  // Fetch enquiry data on component mount
+  useEffect(() => {
+    const fetchEnquiries = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/api/enquiries');
+        const enquiries = response.data;
+        
+        // Calculate stats
+        const statsCounts = {
+          'Open': 0,
+          'Quoted': 0,
+          'Converted': 0,
+          'Closed': 0
+        };
+        
+        // Count enquiries by status
+        enquiries.forEach(enquiry => {
+          if (statsCounts[enquiry.status] !== undefined) {
+            statsCounts[enquiry.status]++;
+          } else {
+            // Default to Open if status is not recognized
+            statsCounts['Open']++;
+          }
+        });
+        
+        // Update state with real data
+        setEnquiryStats([
+          { status: 'Open', count: statsCounts['Open'], color: 'bg-blue-500' },
+          { status: 'Quoted', count: statsCounts['Quoted'], color: 'bg-green-500' },
+          { status: 'Converted', count: statsCounts['Converted'], color: 'bg-yellow-500' },
+          { status: 'Closed', count: statsCounts['Closed'], color: 'bg-red-500' },
+        ]);
+        
+        setTotalEnquiries(enquiries.length);
+      } catch (error) {
+        console.error('Error fetching enquiry data:', error);
+        // Keep existing dummy data on error
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchEnquiries();
+  }, []);
+  
+  // Calculate percentages for pie chart segments
+  const calculatePercentage = (count) => {
+    if (totalEnquiries === 0) return 0;
+    return (count / totalEnquiries) * 100;
+  };
+  
+  const calculateDashArray = (count) => {
+    if (totalEnquiries === 0) return "0 251.2";
+    const percentage = calculatePercentage(count);
+    const dashLength = (percentage / 100) * 251.2;
+    return `${dashLength} 251.2`;
+  };
+
   // Add animation keyframes at the top of the component
   const animationStyles = `
     @keyframes fadeIn {
@@ -67,19 +138,12 @@ const Dashboard = () => {
     .delay-3 { animation-delay: 0.5s; }
   `;
 
-  // Dummy data for the dashboard
+  // Update the stats with real enquiry data
   const stats = [
-    { id: 1, title: 'Enquiries', count: 12, icon: 'mail', color: 'bg-blue-500', path: '/enquiries' },
+    { id: 1, title: 'Enquiries', count: totalEnquiries, icon: 'mail', color: 'bg-blue-500', path: '/enquiries' },
     { id: 2, title: 'Quotations', count: 8, icon: 'description', color: 'bg-green-500', path: '/quotation' },
     { id: 3, title: 'Sales Orders', count: 15, icon: 'shopping_cart', color: 'bg-yellow-500', path: '/sales-orders' },
     { id: 4, title: 'Job Orders', count: 5, icon: 'engineering', color: 'bg-red-500', path: '/job-order' },
-  ];
-
-  const enquiryStats = [
-    { status: 'Open', count: 5, color: 'bg-blue-500' },
-    { status: 'Quoted', count: 3, color: 'bg-green-500' },
-    { status: 'Converted', count: 2, color: 'bg-yellow-500' },
-    { status: 'Closed', count: 2, color: 'bg-red-500' },
   ];
 
   const recentQuotations = [
@@ -130,7 +194,7 @@ const Dashboard = () => {
                 </div>
                 <div>
                   <h3 className="text-gray-500 text-sm font-medium">{stat.title}</h3>
-                  <p className="text-3xl font-bold">{stat.count}</p>
+                  <p className="text-3xl font-bold">{loading && stat.id === 1 ? '...' : stat.count}</p>
                 </div>
               </div>
             </div>
@@ -150,16 +214,72 @@ const Dashboard = () => {
                 <div className="relative w-28 h-28">
                   {/* Chart Circle */}
                   <div className="w-28 h-28 rounded-full border-2 border-transparent bg-gray-100 flex items-center justify-center">
-                    <div className="w-10 h-10 rounded-full bg-white"></div>
+                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center">
+                      {loading ? (
+                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <span className="text-sm font-medium">{totalEnquiries}</span>
+                      )}
+                    </div>
                   </div>
                   
                   {/* Chart Segments */}
                   <div className="absolute top-0 left-0 w-full h-full pie-container">
                     <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
-                      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#3B82F6" strokeWidth="20" strokeDasharray="125.6 251.2" className="pie-segment segment-1" />
-                      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#10B981" strokeWidth="20" strokeDasharray="62.8 251.2" strokeDashoffset="-125.6" className="pie-segment segment-2" />
-                      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#FBBF24" strokeWidth="20" strokeDasharray="41.9 251.2" strokeDashoffset="-188.4" className="pie-segment segment-3" />
-                      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#EF4444" strokeWidth="20" strokeDasharray="41.9 251.2" strokeDashoffset="-230.3" className="pie-segment segment-4" />
+                      {!loading && (
+                        <>
+                          {/* Open Segment */}
+                          <circle 
+                            cx="50" 
+                            cy="50" 
+                            r="40" 
+                            fill="transparent" 
+                            stroke="#3B82F6" 
+                            strokeWidth="20" 
+                            strokeDasharray={calculateDashArray(enquiryStats[0].count)} 
+                            className="pie-segment segment-1" 
+                          />
+                          
+                          {/* Quoted Segment */}
+                          <circle 
+                            cx="50" 
+                            cy="50" 
+                            r="40" 
+                            fill="transparent" 
+                            stroke="#10B981" 
+                            strokeWidth="20" 
+                            strokeDasharray={calculateDashArray(enquiryStats[1].count)} 
+                            strokeDashoffset={`-${(calculatePercentage(enquiryStats[0].count) / 100) * 251.2}`}
+                            className="pie-segment segment-2" 
+                          />
+                          
+                          {/* Converted Segment */}
+                          <circle 
+                            cx="50" 
+                            cy="50" 
+                            r="40" 
+                            fill="transparent" 
+                            stroke="#FBBF24" 
+                            strokeWidth="20" 
+                            strokeDasharray={calculateDashArray(enquiryStats[2].count)} 
+                            strokeDashoffset={`-${((calculatePercentage(enquiryStats[0].count) + calculatePercentage(enquiryStats[1].count)) / 100) * 251.2}`}
+                            className="pie-segment segment-3" 
+                          />
+                          
+                          {/* Closed Segment */}
+                          <circle 
+                            cx="50" 
+                            cy="50" 
+                            r="40" 
+                            fill="transparent" 
+                            stroke="#EF4444" 
+                            strokeWidth="20" 
+                            strokeDasharray={calculateDashArray(enquiryStats[3].count)} 
+                            strokeDashoffset={`-${((calculatePercentage(enquiryStats[0].count) + calculatePercentage(enquiryStats[1].count) + calculatePercentage(enquiryStats[2].count)) / 100) * 251.2}`}
+                            className="pie-segment segment-4" 
+                          />
+                        </>
+                      )}
                     </svg>
                   </div>
                 </div>
@@ -170,7 +290,9 @@ const Dashboard = () => {
                   {enquiryStats.map((stat, index) => (
                     <div key={index} className="flex items-center bg-gray-50 p-1 rounded">
                       <span className={`w-3 h-3 ${stat.color} rounded-full mr-1 flex-shrink-0`}></span>
-                      <span className="whitespace-nowrap overflow-hidden text-overflow-ellipsis font-medium">{stat.status}: {stat.count}</span>
+                      <span className="whitespace-nowrap overflow-hidden text-overflow-ellipsis font-medium">
+                        {stat.status}: {loading ? '...' : stat.count}
+                      </span>
                     </div>
                   ))}
                 </div>

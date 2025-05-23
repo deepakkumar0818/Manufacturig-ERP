@@ -1,7 +1,24 @@
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext';
 
 const HeroSection = () => {
+  const { isAuthenticated } = useContext(AuthContext);
+  const navigate = useNavigate();
+  
+  // Function to handle Get Started button click
+  const handleGetStarted = () => {
+    if (isAuthenticated) {
+      // If already authenticated, go to dashboard
+      navigate('/dashboard');
+    } else {
+      // Show login modal via Home component state
+      // We'll use window custom event to communicate with parent
+      window.dispatchEvent(new Event('openLoginModal'));
+    }
+  };
+  
   return (
     <>
       <style>
@@ -74,8 +91,8 @@ const HeroSection = () => {
                 
                 <div className="mt-10 flex flex-row items-center hero-buttons">
                   <div className="hero-button">
-                    <Link 
-                      to="/dashboard" 
+                    <button 
+                      onClick={handleGetStarted}
                       className="group relative inline-flex h-12 items-center justify-center overflow-hidden rounded-md bg-gradient-to-br from-blue-500 to-indigo-600 px-8 font-medium text-white transition-all duration-300 ease-out hover:scale-[1.02] hover:shadow-[0_10px_20px_-10px_rgba(79,70,229,0.45)] focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
                     >
                       <span className="relative flex items-center">
@@ -84,7 +101,7 @@ const HeroSection = () => {
                           <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                         </svg>
                       </span>
-                    </Link>
+                    </button>
                   </div>
                 </div>
                 

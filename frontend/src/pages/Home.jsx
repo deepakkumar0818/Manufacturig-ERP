@@ -1,6 +1,7 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
+import { AuthContext } from '../context/AuthContext';
 import HeroSection from '../components/HeroSection';
 import FeatureSection from '../components/FeatureSection';
 import Testimonials from '../components/Testimonials';
@@ -16,6 +17,32 @@ const Home = () => {
     password: '',
     rememberMe: false
   });
+  const [loginError, setLoginError] = useState('');
+  
+  // Get auth context
+  const { login, isAuthenticated } = useContext(AuthContext);
+  const navigate = useNavigate();
+  
+  // Effect to listen for "openLoginModal" event from HeroSection
+  useEffect(() => {
+    const handleOpenLoginModal = () => {
+      setShowLoginModal(true);
+    };
+    
+    window.addEventListener('openLoginModal', handleOpenLoginModal);
+    
+    return () => {
+      window.removeEventListener('openLoginModal', handleOpenLoginModal);
+    };
+  }, []);
+  
+  // Effect to redirect to dashboard if user is already authenticated
+  useEffect(() => {
+    if (isAuthenticated && showLoginModal) {
+      setShowLoginModal(false);
+      navigate('/dashboard');
+    }
+  }, [isAuthenticated, navigate, showLoginModal]);
   
   // Menu data structure for easier management
   const menuData = {
@@ -108,16 +135,31 @@ const Home = () => {
       ...loginData,
       [name]: type === 'checkbox' ? checked : value
     });
+    // Clear any previous error messages when user starts typing again
+    if (loginError) setLoginError('');
   };
 
   // Handle login form submission
   const handleLoginSubmit = (e) => {
     e.preventDefault();
-    console.log('Login submitted:', loginData);
-    // Here you would typically make an API call to authenticate
-    // For now, let's just close the modal and simulate success
-    setShowLoginModal(false);
-    // You could redirect to dashboard here
+    
+    // Validate input
+    if (!loginData.email || !loginData.password) {
+      setLoginError('Please enter both email and password');
+      return;
+    }
+    
+    // Attempt login
+    const result = login(loginData);
+    
+    if (result.success) {
+      // Successfully logged in
+      setShowLoginModal(false);
+      navigate('/dashboard');
+    } else {
+      // Login failed
+      setLoginError(result.error || 'Invalid credentials');
+    }
   };
 
   // Add effect to handle menu visibility on desktop
@@ -471,7 +513,7 @@ const Home = () => {
             <div className="px-6 py-6 bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
               <div className="flex items-center mb-3">
                 <span className="text-2xl">📊</span>
-                <h2 className="text-xl font-bold ml-2">SavantsX Manufacturing ERP</h2>
+                <h2 className="text-xl font-bold ml-2">Manufacturing ERP</h2>
               </div>
               <h3 className="text-2xl font-semibold">Welcome Back</h3>
               <p className="text-blue-100 mt-1">Sign in to access your dashboard</p>
@@ -479,6 +521,21 @@ const Home = () => {
             
             {/* Login form */}
             <form onSubmit={handleLoginSubmit} className="px-6 py-6">
+              {loginError && (
+                <div className="mb-4 bg-red-50 border-l-4 border-red-500 p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-9a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1zm0 4a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-red-800">{loginError}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div className="space-y-4">
                 <div>
                   <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
