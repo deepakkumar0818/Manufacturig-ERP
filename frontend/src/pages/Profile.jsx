@@ -22,26 +22,62 @@ const Profile = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Redirect if not authenticated
+  // Helper function to add cache busting to image URLs
+  const getImageWithCacheBusting = (imageUrl) => {
+    if (!imageUrl || !imageUrl.includes('cloudinary.com')) return imageUrl;
+    
+    const timestamp = Date.now();
+    return imageUrl.includes('?') 
+      ? imageUrl.replace(/(\?|&)_t=\d+/, '') + `&_t=${timestamp}`
+      : imageUrl + `?_t=${timestamp}`;
+  };
+
+  // Redirect if not authenticated and initialize form data
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/');
     } else {
-      // Initialize form with user data
+      // Initialize form with user data and apply cache busting
       setFormData({
         name: user.name || '',
         email: user.email || '',
         phone: user.phone || '',
         company: user.company || '',
         position: user.position || '',
-        profileImage: user.profileImage || '',
+        profileImage: getImageWithCacheBusting(user.profileImage) || '',
       });
     }
   }, [isAuthenticated, navigate, user]);
 
+  // Fetch latest profile data when component mounts (only once)
+  useEffect(() => {
+    if (isAuthenticated && !isRefreshing) {
+      refreshUserData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]); // Only dependency is isAuthenticated
+
+  // Force refresh the profile image
+  const forceImageRefresh = () => {
+    if (formData.profileImage && formData.profileImage.includes('cloudinary.com')) {
+      // Update the form data with a new cache-busting URL
+      setFormData(prevState => ({
+        ...prevState,
+        profileImage: getImageWithCacheBusting(formData.profileImage)
+      }));
+    }
+  };
+
+  // Use useEffect to refresh the image when the component loads or when formData.profileImage changes
+  useEffect(() => {
+    if (formData.profileImage) {
+      forceImageRefresh();
+    }
+  }, [formData.profileImage]);
+
   // Function to refresh user data from the server
   const refreshUserData = async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || isRefreshing) return;
     
     setIsRefreshing(true);
     try {
@@ -49,30 +85,32 @@ const Profile = () => {
       if (result.success) {
         const userData = result.user;
         
-        // Also manually update the context state and form data
-        const updatedUser = {...user, ...userData};
-        setUser(updatedUser);
+        // Update form data with the latest profile information
+        setFormData(prevData => ({
+          name: userData.name || prevData.name,
+          email: userData.email || prevData.email,
+          phone: userData.phone || prevData.phone,
+          company: userData.company || prevData.company,
+          position: userData.position || prevData.position,
+          profileImage: getImageWithCacheBusting(userData.profileImage) || prevData.profileImage,
+        }));
         
-        setFormData({
-          name: userData.name || '',
-          email: userData.email || '',
-          phone: userData.phone || '',
-          company: userData.company || '',
-          position: userData.position || '',
-          profileImage: userData.profileImage || '',
-        });
-        
-        // Reset image preview and file
-        setImagePreview('');
-        setImageFile(null);
-        
-        setSuccessMessage('Profile data refreshed from server');
-        setTimeout(() => setSuccessMessage(''), 3000);
+        // Don't show success message during initial load
+        if (!isEditing) {
+          setSuccessMessage('');
+        }
       } else {
-        setErrorMessage(result.error || 'Failed to refresh profile data');
+        // Don't show error message during initial load
+        if (isEditing) {
+          setErrorMessage(result.error || 'Failed to refresh profile data');
+        }
       }
     } catch (error) {
-      setErrorMessage('Failed to refresh profile data');
+      console.error('Error refreshing profile:', error);
+      // Only show error if user initiated the refresh
+      if (isEditing) {
+        setErrorMessage('Failed to refresh profile data');
+      }
     } finally {
       setIsRefreshing(false);
     }
@@ -165,8 +203,9 @@ const Profile = () => {
         if (imageFile) {
           formDataToSend.append('profileImage', imageFile);
         } else if (formData.profileImage) {
-          // If using a URL, pass it as a field
-          formDataToSend.append('profileImage', formData.profileImage);
+          // Clean the URL before sending it (remove cache-busting parameters)
+          const cleanImageUrl = formData.profileImage.replace(/(\?|&)_t=\d+/, '');
+          formDataToSend.append('profileImage', cleanImageUrl);
         }
         
         // Send request with FormData
@@ -184,6 +223,11 @@ const Profile = () => {
         if (response.ok) {
           // Add back the token
           const updatedUser = {...data, token};
+          
+          // Add cache busting to the profile image
+          if (updatedUser.profileImage && updatedUser.profileImage.includes('cloudinary.com')) {
+            updatedUser.profileImage = getImageWithCacheBusting(updatedUser.profileImage);
+          }
           
           // Update context and localStorage
           setUser(updatedUser);
@@ -210,7 +254,7 @@ const Profile = () => {
       phone: updatedUser.phone || '',
       company: updatedUser.company || '',
       position: updatedUser.position || '',
-      profileImage: updatedUser.profileImage || '',
+      profileImage: getImageWithCacheBusting(updatedUser.profileImage) || '',
     });
     
     // Reset image states
@@ -236,7 +280,7 @@ const Profile = () => {
             <div className="flex flex-col md:flex-row items-center">
               <div className="relative">
                 <img 
-                  src={imagePreview || formData.profileImage || 'https://ui-avatars.com/api/?name=User&background=random'} 
+                  src={imagePreview || getImageWithCacheBusting(formData.profileImage) || 'https://ui-avatars.com/api/?name=User&background=random'} 
                   alt="Profile" 
                   className="w-24 h-24 rounded-full border-4 border-white shadow-md object-cover"
                 />
@@ -447,7 +491,7 @@ const Profile = () => {
                         phone: user.phone || '',
                         company: user.company || '',
                         position: user.position || '',
-                        profileImage: user.profileImage || '',
+                        profileImage: getImageWithCacheBusting(user.profileImage) || '',
                       });
                     }}
                     className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"

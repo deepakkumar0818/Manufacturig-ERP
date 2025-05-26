@@ -77,8 +77,19 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.post(API_URL + 'login', userData);
       
       if (response.data) {
-        // Make sure we have the latest data
+        // Make sure we have the latest data including the profile image
         const freshUserData = response.data;
+        
+        // Add cache-busting parameter to Cloudinary URL if it exists
+        if (freshUserData.profileImage && freshUserData.profileImage.includes('cloudinary.com')) {
+          // Add or update the timestamp parameter to prevent browser caching
+          const timestamp = Date.now();
+          freshUserData.profileImage = freshUserData.profileImage.includes('?') 
+            ? freshUserData.profileImage.replace(/(\?|&)_t=\d+/, '') + `&_t=${timestamp}`
+            : freshUserData.profileImage + `?_t=${timestamp}`;
+        }
+        
+        console.log('Login response data with cache busting:', freshUserData);
         setUser(freshUserData);
         localStorage.setItem('user', JSON.stringify(freshUserData));
       }
@@ -138,8 +149,19 @@ export const AuthProvider = ({ children }) => {
       );
       
       if (response.data) {
+        // Add cache-busting parameter to Cloudinary URL if it exists
+        const freshData = {...response.data};
+        if (freshData.profileImage && freshData.profileImage.includes('cloudinary.com')) {
+          // Add or update the timestamp parameter to prevent browser caching
+          const timestamp = Date.now();
+          freshData.profileImage = freshData.profileImage.includes('?') 
+            ? freshData.profileImage.replace(/(\?|&)_t=\d+/, '') + `&_t=${timestamp}`
+            : freshData.profileImage + `?_t=${timestamp}`;
+        }
+        
         // Make sure to preserve the token from the current user
-        const updatedUser = {...response.data, token: user.token};
+        const updatedUser = {...freshData, token: user.token};
+        console.log('Profile update with cache busting:', updatedUser);
         
         // Update both state and localStorage
         setUser(updatedUser);
@@ -182,10 +204,20 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.get(API_URL + 'profile', config);
       
       if (response.data) {
+        // Add cache-busting parameter to Cloudinary URL if it exists
+        const freshUserData = {...response.data};
+        if (freshUserData.profileImage && freshUserData.profileImage.includes('cloudinary.com')) {
+          // Add or update the timestamp parameter to prevent browser caching
+          const timestamp = Date.now();
+          freshUserData.profileImage = freshUserData.profileImage.includes('?') 
+            ? freshUserData.profileImage.replace(/(\?|&)_t=\d+/, '') + `&_t=${timestamp}`
+            : freshUserData.profileImage + `?_t=${timestamp}`;
+        }
+        
         // Update state and localStorage with fresh data, preserving token
-        const freshUserData = {...response.data, token: user.token};
-        setUser(freshUserData);
-        localStorage.setItem('user', JSON.stringify(freshUserData));
+        const updatedUserData = {...freshUserData, token: user.token};
+        setUser(updatedUserData);
+        localStorage.setItem('user', JSON.stringify(updatedUserData));
       }
       
       setLoading(false);

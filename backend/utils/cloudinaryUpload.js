@@ -27,17 +27,38 @@ const upload = multer({
   fileFilter: fileFilter
 });
 
-// Cloudinary upload stream function
-const cloudinaryUpload = (file) => {
+/**
+ * Cloudinary upload stream function
+ * @param {Object} file - File object from multer
+ * @param {Object} options - Upload options for Cloudinary
+ * @returns {Promise} - Promise with Cloudinary upload result
+ */
+const cloudinaryUpload = (file, options = {}) => {
   return new Promise((resolve, reject) => {
+    // Set default options if not provided
+    const uploadOptions = {
+      folder: options.folder || 'profile_images',
+      resource_type: options.resource_type || 'auto',
+      transformation: options.transformation || [
+        { width: 500, height: 500, crop: 'limit', quality: 'auto' }
+      ]
+    };
+    
+    // Add public_id if provided
+    if (options.public_id) {
+      uploadOptions.public_id = options.public_id;
+    }
+    
+    // Add any other options passed in
+    Object.keys(options).forEach(key => {
+      if (!['folder', 'resource_type', 'transformation', 'public_id'].includes(key)) {
+        uploadOptions[key] = options[key];
+      }
+    });
+
+    // Stream upload to Cloudinary
     const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder: 'profile_images',
-        resource_type: 'auto',
-        transformation: [
-          { width: 500, height: 500, crop: 'limit', quality: 'auto' }
-        ]
-      },
+      uploadOptions,
       (error, result) => {
         if (error) return reject(error);
         resolve(result);
@@ -48,4 +69,27 @@ const cloudinaryUpload = (file) => {
   });
 };
 
-module.exports = { upload, cloudinaryUpload }; 
+/**
+ * Delete image from Cloudinary
+ * @param {String} publicId - Cloudinary public ID
+ * @param {Object} options - Delete options
+ * @returns {Promise} - Promise with deletion result
+ */
+const deleteFromCloudinary = async (publicId, options = {}) => {
+  try {
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: options.resource_type || 'image',
+      ...options
+    });
+    return result;
+  } catch (error) {
+    console.error('Error deleting from Cloudinary:', error);
+    throw error;
+  }
+};
+
+module.exports = { 
+  upload, 
+  cloudinaryUpload,
+  deleteFromCloudinary 
+}; 

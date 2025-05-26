@@ -10,9 +10,19 @@ const helmet = require("helmet");
 const bodyParser = require("body-parser");
 const connectDB = require("./config/db");
 const { notFound, errorHandler } = require("./middlewares/errorMiddleware");
+const cloudinary = require("cloudinary").v2;
 
 // Setup Express App
 const app = express();
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+console.log("Cloudinary configuration loaded with cloud name:", process.env.CLOUDINARY_CLOUD_NAME);
 
 // CORS configuration
 app.use(cors({
@@ -50,6 +60,9 @@ app.get("/", (req, res) => {
 
 // Use user routes
 app.use('/api/users', require('./routes/userRoutes'));
+
+// Use upload routes
+app.use('/api/uploads', require('./routes/uploadRoutes'));
 
 // Mock data for enquiries when MongoDB is not available
 const mockEnquiries = [];

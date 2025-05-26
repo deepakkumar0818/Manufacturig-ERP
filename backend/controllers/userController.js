@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 const { cloudinary } = require('../config/cloudinaryConfig');
-const { cloudinaryUpload } = require('../utils/cloudinaryUpload');
+const { cloudinaryUpload, deleteFromCloudinary } = require('../utils/cloudinaryUpload');
 
 // @desc    Register a new user
 // @route   POST /api/users
@@ -68,6 +68,7 @@ const loginUser = asyncHandler(async (req, res) => {
   const user = await User.findOne({ email });
 
   if (user && (await bcrypt.compare(password, user.password))) {
+    // Make sure we're returning the latest user data
     res.json({
       _id: user._id,
       name: user.name,
@@ -140,12 +141,20 @@ const updateUserProfile = asyncHandler(async (req, res) => {
           const publicId = user.profileImage.split('/').slice(-2).join('/').split('.')[0];
           if (publicId.startsWith('profile_images/')) {
             // Delete the image from Cloudinary if it's in our folder
-            await cloudinary.uploader.destroy(publicId);
+            await deleteFromCloudinary(publicId);
           }
         }
         
-        // Upload new image to Cloudinary
-        const result = await cloudinaryUpload(req.file);
+        // Upload new image to Cloudinary with options
+        const uploadOptions = {
+          folder: 'profile_images',
+          public_id: `user_${user._id}_${Date.now()}`, // Use unique ID to avoid cache issues
+          transformation: [
+            { width: 500, height: 500, crop: 'fill', gravity: 'face', quality: 'auto' }
+          ]
+        };
+        
+        const result = await cloudinaryUpload(req.file, uploadOptions);
         user.profileImage = result.secure_url;
       } catch (error) {
         console.error('Error uploading image to Cloudinary:', error);
@@ -163,6 +172,8 @@ const updateUserProfile = asyncHandler(async (req, res) => {
     }
 
     const updatedUser = await user.save();
+
+    console.log("User profile updated with image:", updatedUser.profileImage);
 
     res.json({
       _id: updatedUser._id,
