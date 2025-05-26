@@ -2,6 +2,10 @@ const User = require('../models/userModel');
 const asyncHandler = require('express-async-handler');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
+const { cloudinary } = require('../config/cloudinaryConfig');
+const { cloudinaryUpload } = require('../utils/cloudinaryUpload');
 
 // @desc    Register a new user
 // @route   POST /api/users
@@ -126,7 +130,30 @@ const updateUserProfile = asyncHandler(async (req, res) => {
     user.phone = req.body.phone || user.phone;
     user.position = req.body.position || user.position;
     
-    if (req.body.profileImage) {
+    // Handle profileImage upload via Cloudinary
+    if (req.file) {
+      try {
+        // If user already has a Cloudinary profile image, delete it
+        if (user.profileImage && user.profileImage.includes('cloudinary.com')) {
+          // Extract public_id from Cloudinary URL
+          // Format: https://res.cloudinary.com/cloud_name/image/upload/v1234567890/profile_images/abcdef123456
+          const publicId = user.profileImage.split('/').slice(-2).join('/').split('.')[0];
+          if (publicId.startsWith('profile_images/')) {
+            // Delete the image from Cloudinary if it's in our folder
+            await cloudinary.uploader.destroy(publicId);
+          }
+        }
+        
+        // Upload new image to Cloudinary
+        const result = await cloudinaryUpload(req.file);
+        user.profileImage = result.secure_url;
+      } catch (error) {
+        console.error('Error uploading image to Cloudinary:', error);
+        res.status(500);
+        throw new Error('Image upload failed');
+      }
+    } else if (req.body.profileImage) {
+      // Allow setting a URL for the profile image
       user.profileImage = req.body.profileImage;
     }
     

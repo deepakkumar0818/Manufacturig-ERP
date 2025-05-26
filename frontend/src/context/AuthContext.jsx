@@ -59,7 +59,7 @@ export const AuthProvider = ({ children }) => {
           name: 'Admin User',
           email: userData.email,
           role: 'admin',
-          profileImage: 'https://i.pravatar.cc/300',
+          profileImage: 'https://ui-avatars.com/api/?name=Admin+User&background=random',
           company: 'Demo Manufacturing',
           phone: '+1234567890',
           position: 'Administrator',
@@ -116,15 +116,26 @@ export const AuthProvider = ({ children }) => {
         return { success: true, user: updatedUser };
       }
       
+      // Check if updatedData is FormData
+      const isFormData = updatedData instanceof FormData;
+      
       // Real API call with authentication
       const config = {
         headers: {
-          'Content-Type': 'application/json',
           Authorization: `Bearer ${user.token}`,
         },
       };
       
-      const response = await axios.put(API_URL + 'profile', updatedData, config);
+      // If it's not FormData, set the Content-Type to JSON
+      if (!isFormData) {
+        config.headers['Content-Type'] = 'application/json';
+      }
+      
+      const response = await axios.put(
+        API_URL + 'profile', 
+        updatedData,
+        config
+      );
       
       if (response.data) {
         // Make sure to preserve the token from the current user

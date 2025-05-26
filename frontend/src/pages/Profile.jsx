@@ -1,10 +1,11 @@
-import { useState, useContext, useEffect } from 'react';
+import { useState, useContext, useEffect, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 const Profile = () => {
   const { user, updateProfile, getUserProfile, setUser, isAuthenticated } = useContext(AuthContext);
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -13,6 +14,8 @@ const Profile = () => {
     position: '',
     profileImage: '',
   });
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -59,6 +62,10 @@ const Profile = () => {
           profileImage: userData.profileImage || '',
         });
         
+        // Reset image preview and file
+        setImagePreview('');
+        setImageFile(null);
+        
         setSuccessMessage('Profile data refreshed from server');
         setTimeout(() => setSuccessMessage(''), 3000);
       } else {
@@ -82,6 +89,44 @@ const Profile = () => {
     if (errorMessage) setErrorMessage('');
   };
 
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMessage('Image size exceeds 5MB limit');
+      return;
+    }
+    
+    // Check file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/jpg'];
+    if (!validTypes.includes(file.type)) {
+      setErrorMessage('Invalid file type. Please use JPG, PNG, GIF, or WebP');
+      return;
+    }
+    
+    setImageFile(file);
+    
+    // Create preview URL
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setImagePreview(event.target.result);
+    };
+    reader.readAsDataURL(file);
+    
+    // Clear any error messages
+    if (errorMessage) setErrorMessage('');
+  };
+  
+  const clearImageSelection = () => {
+    setImageFile(null);
+    setImagePreview('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -89,27 +134,65 @@ const Profile = () => {
     setSuccessMessage('');
     
     try {
-      const result = await updateProfile(formData);
-      
-      if (result.success) {
-        // Make sure the UI reflects the updated user data
-        const updatedUser = result.user;
+      // If we're using the demo admin, just update without file upload
+      if (user?.email === 'admin@example.com') {
+        // For demo user, update directly with form data
+        let updatedData = { ...formData };
         
-        // Additionally update the local form data to reflect changes
-        setFormData({
-          name: updatedUser.name || '',
-          email: updatedUser.email || '',
-          phone: updatedUser.phone || '',
-          company: updatedUser.company || '',
-          position: updatedUser.position || '',
-          profileImage: updatedUser.profileImage || '',
+        // If there's a new image preview, use that as the profile image for the demo user
+        if (imagePreview) {
+          updatedData.profileImage = imagePreview;
+        }
+        
+        const result = await updateProfile(updatedData);
+        
+        if (result.success) {
+          handleSuccessfulUpdate(result.user);
+        } else {
+          setErrorMessage(result.error || 'Failed to update profile');
+        }
+      } else {
+        // For real users with backend integration
+        // Create FormData for file upload
+        const formDataToSend = new FormData();
+        formDataToSend.append('name', formData.name);
+        formDataToSend.append('email', formData.email);
+        formDataToSend.append('phone', formData.phone);
+        formDataToSend.append('company', formData.company);
+        formDataToSend.append('position', formData.position);
+        
+        // Only append file if one is selected
+        if (imageFile) {
+          formDataToSend.append('profileImage', imageFile);
+        } else if (formData.profileImage) {
+          // If using a URL, pass it as a field
+          formDataToSend.append('profileImage', formData.profileImage);
+        }
+        
+        // Send request with FormData
+        const token = user.token;
+        const response = await fetch('http://localhost:5000/api/users/profile', {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: formDataToSend
         });
         
-        setSuccessMessage('Profile updated successfully!');
-        setTimeout(() => setSuccessMessage(''), 3000);
-        setIsEditing(false);
-      } else {
-        setErrorMessage(result.error || 'Failed to update profile');
+        const data = await response.json();
+        
+        if (response.ok) {
+          // Add back the token
+          const updatedUser = {...data, token};
+          
+          // Update context and localStorage
+          setUser(updatedUser);
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          
+          handleSuccessfulUpdate(updatedUser);
+        } else {
+          setErrorMessage(data.message || 'Failed to update profile');
+        }
       }
     } catch (error) {
       setErrorMessage('An error occurred while updating your profile');
@@ -117,6 +200,29 @@ const Profile = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+  
+  const handleSuccessfulUpdate = (updatedUser) => {
+    // Update form data with response
+    setFormData({
+      name: updatedUser.name || '',
+      email: updatedUser.email || '',
+      phone: updatedUser.phone || '',
+      company: updatedUser.company || '',
+      position: updatedUser.position || '',
+      profileImage: updatedUser.profileImage || '',
+    });
+    
+    // Reset image states
+    setImagePreview('');
+    setImageFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    
+    setSuccessMessage('Profile updated successfully!');
+    setTimeout(() => setSuccessMessage(''), 3000);
+    setIsEditing(false);
   };
 
   if (!isAuthenticated) return null;
@@ -130,9 +236,9 @@ const Profile = () => {
             <div className="flex flex-col md:flex-row items-center">
               <div className="relative">
                 <img 
-                  src={formData.profileImage || 'https://i.pravatar.cc/300'} 
+                  src={imagePreview || formData.profileImage || 'https://ui-avatars.com/api/?name=User&background=random'} 
                   alt="Profile" 
-                  className="w-24 h-24 rounded-full border-4 border-white shadow-md"
+                  className="w-24 h-24 rounded-full border-4 border-white shadow-md object-cover"
                 />
               </div>
               <div className="mt-4 md:mt-0 md:ml-6 text-center md:text-left">
@@ -258,16 +364,67 @@ const Profile = () => {
                   />
                 </div>
                 <div>
-                  <label htmlFor="profileImage" className="block text-sm font-medium text-gray-700">Profile Image URL</label>
-                  <input
-                    type="text"
-                    id="profileImage"
-                    name="profileImage"
-                    value={formData.profileImage}
-                    onChange={handleChange}
-                    readOnly={!isEditing}
-                    className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm ${!isEditing ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                  />
+                  {isEditing ? (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Profile Image</label>
+                      <div className="mt-1 flex items-center space-x-2">
+                        <label className="cursor-pointer bg-white px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm leading-4 font-medium text-gray-700 hover:bg-gray-50">
+                          Browse...
+                          <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleImageChange}
+                            accept="image/jpeg,image/png,image/gif,image/webp"
+                            className="sr-only"
+                          />
+                        </label>
+                        {imagePreview && (
+                          <button
+                            type="button"
+                            onClick={clearImageSelection}
+                            className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      {imagePreview && (
+                        <div className="mt-2">
+                          <img
+                            src={imagePreview}
+                            alt="Preview"
+                            className="h-24 w-24 object-cover rounded-md"
+                          />
+                        </div>
+                      )}
+                      <p className="mt-1 text-xs text-gray-500">JPG, PNG, GIF or WebP. Max 5MB.</p>
+                      
+                      {!imageFile && (
+                        <div className="mt-2">
+                          <label htmlFor="profileImageUrl" className="block text-sm font-medium text-gray-700">Or use image URL</label>
+                          <input
+                            type="text"
+                            id="profileImage"
+                            name="profileImage"
+                            value={formData.profileImage}
+                            onChange={handleChange}
+                            placeholder="https://example.com/image.jpg"
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Profile Image URL</label>
+                      <input
+                        type="text"
+                        value={formData.profileImage}
+                        readOnly
+                        className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 cursor-not-allowed shadow-sm sm:text-sm"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -278,6 +435,11 @@ const Profile = () => {
                     onClick={() => {
                       setIsEditing(false);
                       setErrorMessage('');
+                      setImagePreview('');
+                      setImageFile(null);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.value = '';
+                      }
                       // Reset form to original values
                       setFormData({
                         name: user.name || '',
