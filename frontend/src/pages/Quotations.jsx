@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import axios from 'axios';
 
 const Quotations = () => {
   const [activeTab, setActiveTab] = useState('list');
@@ -6,6 +7,17 @@ const Quotations = () => {
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState('error'); // error, success, warning
   const [submissionType, setSubmissionType] = useState('draft'); // draft or send
+  const [showEnquiryLookup, setShowEnquiryLookup] = useState(false);
+  const [enquiries, setEnquiries] = useState([]);
+  const [enquiriesLoading, setEnquiriesLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredEnquiries, setFilteredEnquiries] = useState([]);
+  
+  // New state for customers dropdown
+  const [customers, setCustomers] = useState([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
+  const [filteredCustomers, setFilteredCustomers] = useState([]);
   
   // Sample quotation data for the list
   const [quotations, setQuotations] = useState([
@@ -76,8 +88,9 @@ const Quotations = () => {
   ]);
   
   // State for new quotation form
-  const [newQuotation, setNewQuotation] = useState({
+  const initialQuotationState = {
     enquiryId: '',
+    relatedEnquiry: null,
     customer: '',
     contactPerson: '',
     email: '',
@@ -102,7 +115,280 @@ const Quotations = () => {
     deliveryTerms: '',
     termsConditions: '',
     notes: ''
-  });
+  };
+  
+  const [newQuotation, setNewQuotation] = useState(initialQuotationState);
+  
+  const [lookupEnquiryLoading, setLookupEnquiryLoading] = useState(false);
+  const [enquiryLookupError, setEnquiryLookupError] = useState('');
+  
+  // Load sample customer data (replace with API call in production)
+  useEffect(() => {
+    const sampleCustomers = [
+      { id: 1, name: 'ABC Manufacturing', contactPerson: 'John Smith', email: 'john@abcmanufacturing.com', phone: '+1 234-567-8901' },
+      { id: 2, name: 'XYZ Industries', contactPerson: 'Jane Doe', email: 'jane@xyzindustries.com', phone: '+1 987-654-3210' },
+      { id: 3, name: 'Acme Corp', contactPerson: 'Robert Johnson', email: 'robert@acmecorp.com', phone: '+1 456-789-0123' },
+      { id: 4, name: 'Global Enterprises', contactPerson: 'Sarah Williams', email: 'sarah@globalenterprises.com', phone: '+1 567-890-1234' },
+      { id: 5, name: 'Tech Solutions', contactPerson: 'Michael Brown', email: 'michael@techsolutions.com', phone: '+1 678-901-2345' },
+      { id: 6, name: 'Innovative Manufacturing', contactPerson: 'Emily Davis', email: 'emily@innovativemanufacturing.com', phone: '+1 789-012-3456' },
+      { id: 7, name: 'Precision Tools Inc', contactPerson: 'David Wilson', email: 'david@precisiontools.com', phone: '+1 890-123-4567' },
+    ];
+    
+    setCustomers(sampleCustomers);
+    setFilteredCustomers(sampleCustomers);
+  }, []);
+  
+  // Filter customers when search term changes
+  useEffect(() => {
+    if (customerSearchTerm) {
+      const filtered = customers.filter(customer => 
+        customer.name.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
+        customer.contactPerson.toLowerCase().includes(customerSearchTerm.toLowerCase())
+      );
+      setFilteredCustomers(filtered);
+    } else {
+      setFilteredCustomers(customers);
+    }
+  }, [customerSearchTerm, customers]);
+  
+  // Function to handle selecting a customer from dropdown
+  const handleCustomerSelect = (customer) => {
+    setNewQuotation({
+      ...newQuotation,
+      customer: customer.name,
+      contactPerson: customer.contactPerson,
+      email: customer.email,
+      phone: customer.phone
+    });
+    setShowCustomerDropdown(false);
+    setCustomerSearchTerm('');
+  };
+  
+  // Update filtered enquiries when search term changes
+  useEffect(() => {
+    if (searchTerm) {
+      const filtered = enquiries.filter(enquiry =>
+        enquiry.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        enquiry.customer?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        enquiry.contactPerson?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        enquiry.product?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setFilteredEnquiries(filtered);
+    } else {
+      setFilteredEnquiries(enquiries);
+    }
+  }, [searchTerm, enquiries]);
+  
+  // Function to handle enquiry ID input changes with auto-lookup
+  const handleEnquiryIdChange = (e) => {
+    const { value } = e.target;
+    
+    // Update the field value
+    handleChange(e);
+    
+    // If the value is cleared, reset related enquiry data
+    if (!value) {
+      setNewQuotation(prev => ({
+        ...prev,
+        relatedEnquiry: null
+      }));
+    }
+  };
+  
+  // Auto-lookup enquiry when field loses focus and has a value
+  const handleEnquiryIdBlur = (e) => {
+    const value = e.target.value?.trim();
+    if (value && (!newQuotation.relatedEnquiry || value !== newQuotation.relatedEnquiry.id)) {
+      lookupEnquiryById(value);
+    }
+  };
+  
+  // Function to handle find/lookup button click
+  const handleFindEnquiry = () => {
+    setShowEnquiryLookup(true);
+    setEnquiryLookupError('');
+    fetchEnquiries();
+  };
+  
+  // Fetch enquiries from API with better error handling
+  const fetchEnquiries = async () => {
+    setEnquiriesLoading(true);
+    setEnquiryLookupError('');
+    try {
+      const response = await axios.get('http://localhost:5000/api/enquiries');
+      if (response.data && Array.isArray(response.data)) {
+        setEnquiries(response.data);
+        setFilteredEnquiries(response.data);
+      } else {
+        throw new Error('Invalid data format received from server');
+      }
+    } catch (err) {
+      console.error('Error fetching enquiries:', err);
+      setEnquiryLookupError('Unable to fetch enquiries. Please try again later.');
+      // Use sample data as fallback if API fails
+      const fallbackData = [
+        {
+          _id: '1',
+          id: 'ENQ-001',
+          date: '2024-04-25',
+          customer: 'ABC Manufacturing',
+          contactPerson: 'John Smith',
+          phone: '+1 234-567-8901',
+          email: 'john@abcmanufacturing.com',
+          address: '123 Industrial Ave',
+          city: 'Manufacturing City',
+          state: 'NY',
+          zipCode: '12345',
+          country: 'USA',
+          status: 'Open',
+          product: 'Custom Machinery Parts',
+          quantity: 50,
+          specs: 'High precision required',
+          expectedDelivery: '2024-05-30',
+          notes: 'Requires precision machining'
+        },
+        {
+          _id: '2',
+          id: 'ENQ-002',
+          date: '2024-04-24',
+          customer: 'XYZ Industries',
+          contactPerson: 'Jane Doe',
+          phone: '+1 987-654-3210',
+          email: 'jane@xyzindustries.com',
+          address: '456 Corporate Blvd',
+          city: 'Industry City',
+          state: 'CA',
+          zipCode: '98765',
+          country: 'USA',
+          status: 'Open',
+          product: 'Industrial Valves',
+          quantity: 25,
+          specs: 'High-pressure tolerance',
+          expectedDelivery: '2024-05-15',
+          notes: 'High-pressure tolerance required'
+        },
+        {
+          _id: '3',
+          id: 'ENQ-003',
+          date: '2024-04-22',
+          customer: 'Acme Corp',
+          contactPerson: 'Robert Johnson',
+          phone: '+1 456-789-0123',
+          email: 'robert@acmecorp.com',
+          address: '789 Production Rd',
+          city: 'Acme City',
+          state: 'TX',
+          zipCode: '45678',
+          country: 'USA',
+          status: 'Open',
+          product: 'Metal Fabrication - Sheet Metal Components',
+          quantity: 100,
+          specs: 'Standard specifications',
+          expectedDelivery: '2024-06-01',
+          notes: 'Priority production requested'
+        }
+      ];
+      setEnquiries(fallbackData);
+      setFilteredEnquiries(fallbackData);
+    } finally {
+      setEnquiriesLoading(false);
+    }
+  };
+  
+  // Function to look up enquiry by ID with better UI feedback
+  const lookupEnquiryById = async (id) => {
+    if (!id) {
+      showErrorToast('Please enter an Enquiry ID');
+      return;
+    }
+
+    setLookupEnquiryLoading(true);
+    setEnquiryLookupError('');
+    try {
+      // First try to find in already loaded enquiries
+      const foundEnquiry = enquiries.find(e => e.id === id);
+      if (foundEnquiry) {
+        handleEnquirySelect(foundEnquiry);
+        return;
+      }
+
+      // If not found, fetch from the server
+      const response = await axios.get(`http://localhost:5000/api/enquiries/custom/${id}`);
+      if (response.data) {
+        handleEnquirySelect(response.data);
+      } else {
+        showErrorToast(`Enquiry with ID ${id} not found`);
+      }
+    } catch (err) {
+      console.error('Error finding enquiry:', err);
+      showErrorToast(`Enquiry with ID ${id} not found. Please verify the ID and try again.`);
+    } finally {
+      setLookupEnquiryLoading(false);
+    }
+  };
+  
+  // Handle the selection of an enquiry from the lookup with comprehensive field mapping
+  const handleEnquirySelect = (enquiry) => {
+    // Create a comprehensive mapping of all available fields
+    setNewQuotation({
+      ...newQuotation,
+      enquiryId: enquiry.id,
+      relatedEnquiry: enquiry,
+      customer: enquiry.customer || '',
+      contactPerson: enquiry.contactPerson || '',
+      email: enquiry.email || '',
+      phone: enquiry.phone || '',
+      streetAddress: enquiry.address || '',
+      addressLine2: enquiry.addressLine2 || '',
+      city: enquiry.city || '',
+      state: enquiry.state || '',
+      postalCode: enquiry.zipCode || enquiry.postalCode || '',
+      country: enquiry.country || '',
+      // Add items with details from the enquiry
+      items: [
+        {
+          description: enquiry.product || '',
+          quantity: parseInt(enquiry.quantity) || 1,
+          unitPrice: parseFloat(enquiry.estimatedPrice) || 0,
+          total: (parseInt(enquiry.quantity) || 1) * (parseFloat(enquiry.estimatedPrice) || 0)
+        }
+      ],
+      // Copy any other relevant fields
+      notes: [
+        enquiry.specs ? `Specifications: ${enquiry.specs}` : '',
+        enquiry.notes ? `Notes: ${enquiry.notes}` : '',
+        enquiry.expectedDelivery ? `Expected Delivery: ${enquiry.expectedDelivery}` : ''
+      ].filter(note => note !== '').join('\n\n')
+    });
+    
+    // Calculate totals
+    setTimeout(() => {
+      calculateTotals();
+    }, 100);
+    
+    // Close the lookup
+    setShowEnquiryLookup(false);
+    
+    // Show success message
+    showSuccessToast(`Enquiry ${enquiry.id} data loaded successfully!`);
+    
+    // Optional: Update enquiry status to "Quoted" via API
+    updateEnquiryStatus(enquiry._id || enquiry.id, "Quoted");
+  };
+  
+  // Function to update enquiry status after selection
+  const updateEnquiryStatus = async (enquiryId, status) => {
+    try {
+      // Call API to update status - implement according to your API structure
+      await axios.patch(`http://localhost:5000/api/enquiries/${enquiryId}/status`, { 
+        status: status 
+      });
+      console.log(`Enquiry ${enquiryId} status updated to ${status}`);
+    } catch (err) {
+      console.error('Error updating enquiry status:', err);
+      // Don't show error to user as this is a background operation
+    }
+  };
   
   // Calculate valid until date
   const calculateValidUntil = (days) => {
@@ -128,7 +414,7 @@ const Quotations = () => {
     });
   }, []);
   
-  // Form submission handler
+  // Form submission handler - update to save relation to enquiry
   const handleSubmit = (e) => {
     e.preventDefault();
     
@@ -178,14 +464,21 @@ const Quotations = () => {
     // Set status based on submission type
     const status = submissionType === 'send' ? 'Sent' : 'Draft';
     
+    // Include related enquiry ID in the saved quotation
+    const newQuotationData = {
+      ...newQuotation,
+      id,
+      date,
+      status,
+      // Ensure enquiry reference is saved for database relation
+      enquiryId: newQuotation.enquiryId || null,
+      // Store just the _id, not the whole object in saved data
+      enquiryRef: newQuotation.relatedEnquiry?._id || null
+    };
+    
     setQuotations([
       ...quotations,
-      {
-        ...newQuotation,
-        id,
-        date,
-        status
-      }
+      newQuotationData
     ]);
     
     // Show success message
@@ -194,42 +487,27 @@ const Quotations = () => {
     
     // Reset form
     setNewQuotation({
-      enquiryId: '',
-      customer: '',
-      contactPerson: '',
-      email: '',
-      phone: '',
-      streetAddress: '',
-      addressLine2: '',
-      city: '',
-      state: '',
-      postalCode: '',
-      country: '',
-      validity: '30 days',
-      validUntil: calculateValidUntil('30 days'),
-      items: [{ description: '', quantity: 1, unitPrice: 0, total: 0 }],
-      subtotal: 0,
-      taxRate: 10,
-      tax: 0,
-      discountType: 'percentage',
-      discountValue: 0,
-      discount: 0,
-      total: 0,
-      paymentTerms: '',
-      deliveryTerms: '',
-      termsConditions: '',
-      notes: ''
+      ...initialQuotationState,
+      validUntil: calculateValidUntil('30 days')
     });
     
     // Go back to list view
     setActiveTab('list');
+    
+    // In production: POST the data to your API endpoint
+    // saveQuotationToApi(newQuotationData);
   };
   
-  // Handle save and send
-  const handleSaveAndSend = () => {
-    setSubmissionType('send');
-    // Trigger form submission
-    document.getElementById('quotationForm').requestSubmit();
+  // Function to save quotation data to API (implement when ready)
+  const saveQuotationToApi = async (quotationData) => {
+    try {
+      const response = await axios.post('http://localhost:5000/api/quotations', quotationData);
+      console.log('Quotation saved:', response.data);
+      // Additional handling as needed
+    } catch (err) {
+      console.error('Error saving quotation:', err);
+      // Error handling
+    }
   };
   
   // Helper functions for toast notifications
@@ -450,29 +728,19 @@ const Quotations = () => {
     <div className="space-y-6">
       {/* Toast Notification */}
       {showToast && (
-        <div className={`fixed top-4 right-4 z-50 w-96 rounded-lg shadow-xl p-5 ${
-          toastType === 'error' ? 'bg-red-100 text-red-800 border-red-300' : 
-          toastType === 'success' ? 'bg-green-100 text-green-800 border-green-300' : 
-          'bg-yellow-100 text-yellow-800 border-yellow-300'
-        } border-2 animate-fade-in`}>
-          <div className="flex items-start">
-            <div className="flex-shrink-0">
-              {toastType === 'error' && <span className="material-icons text-red-600 text-2xl">error_outline</span>}
-              {toastType === 'success' && <span className="material-icons text-green-600 text-2xl">check_circle</span>}
-              {toastType === 'warning' && <span className="material-icons text-yellow-600 text-2xl">warning</span>}
-            </div>
-            <div className="ml-4 w-full flex-1">
-              <p className="text-base font-medium">{toastMessage}</p>
-            </div>
-            <div className="ml-4 flex-shrink-0 flex">
-              <button
-                className="bg-transparent text-gray-500 hover:text-gray-700 focus:outline-none"
-                onClick={() => setShowToast(false)}
-              >
-                <span className="material-icons">close</span>
-              </button>
-            </div>
-          </div>
+        <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 rounded-lg shadow-lg px-6 py-4 flex items-center space-x-2 ${
+          toastType === 'error' ? 'bg-red-100 text-red-800 border-l-4 border-red-500' :
+          toastType === 'success' ? 'bg-green-100 text-green-800 border-l-4 border-green-500' :
+          'bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500'
+        }`}>
+          <span className="material-icons text-xl">
+            {toastType === 'error' ? 'error' :
+             toastType === 'success' ? 'check_circle' : 'warning'}
+          </span>
+          <p>{toastMessage}</p>
+          <button onClick={() => setShowToast(false)} className="ml-4 text-gray-500 hover:text-gray-800">
+            <span className="material-icons">close</span>
+          </button>
         </div>
       )}
       
@@ -586,22 +854,86 @@ const Quotations = () => {
                     Related Enquiry
                   </label>
                   <div className="flex gap-2">
-                    <input
-                      type="text"
-                      name="enquiryId"
-                      value={newQuotation.enquiryId}
-                      onChange={handleChange}
-                      className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      placeholder="Enter enquiry ID if applicable"
-                    />
+                    <div className="relative flex-grow">
+                      <input
+                        type="text"
+                        name="enquiryId"
+                        value={newQuotation.enquiryId}
+                        onChange={handleEnquiryIdChange}
+                        onBlur={handleEnquiryIdBlur}
+                        className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors pr-8"
+                        placeholder="Enter enquiry ID (e.g., ENQ-001)"
+                      />
+                      {lookupEnquiryLoading && (
+                        <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-500"></div>
+                        </div>
+                      )}
+                    </div>
                     <button 
                       type="button" 
                       className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-md font-medium flex items-center transition-colors"
+                      onClick={() => lookupEnquiryById(newQuotation.enquiryId)}
+                      disabled={lookupEnquiryLoading}
                     >
                       <span className="material-icons mr-1 text-sm">search</span>
                       Find
                     </button>
+                    <button 
+                      type="button" 
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md font-medium flex items-center transition-colors"
+                      onClick={handleFindEnquiry}
+                      disabled={enquiriesLoading}
+                    >
+                      <span className="material-icons mr-1 text-sm">visibility</span>
+                      Browse
+                    </button>
                   </div>
+                  {newQuotation.relatedEnquiry && (
+                    <div className="mt-2 p-3 bg-blue-100 rounded-md">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center">
+                          <span className="material-icons text-blue-600 mr-2">assignment</span>
+                          <div>
+                            <p className="font-medium text-blue-800">{newQuotation.relatedEnquiry.id}</p>
+                            <p className="text-xs text-blue-600">{newQuotation.relatedEnquiry.product}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            newQuotation.relatedEnquiry.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                            newQuotation.relatedEnquiry.status === 'Quoted' ? 'bg-yellow-100 text-yellow-800' :
+                            newQuotation.relatedEnquiry.status === 'Converted' ? 'bg-green-100 text-green-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {newQuotation.relatedEnquiry.status}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-blue-700">
+                        <div><span className="font-semibold">Customer:</span> {newQuotation.relatedEnquiry.customer}</div>
+                        <div><span className="font-semibold">Contact:</span> {newQuotation.relatedEnquiry.contactPerson}</div>
+                        <div><span className="font-semibold">Quantity:</span> {newQuotation.relatedEnquiry.quantity}</div>
+                        <div><span className="font-semibold">Created:</span> {new Date(newQuotation.relatedEnquiry.date).toLocaleDateString()}</div>
+                      </div>
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewQuotation({
+                              ...newQuotation,
+                              enquiryId: '',
+                              relatedEnquiry: null
+                            });
+                          }}
+                          className="text-xs text-red-600 hover:text-red-800 flex items-center"
+                        >
+                          <span className="material-icons text-sm mr-1">link_off</span>
+                          Unlink enquiry
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <p className="text-xs text-gray-500 mt-1">Link this quotation to an existing enquiry to auto-fill customer details</p>
                 </div>
                 
@@ -610,15 +942,69 @@ const Quotations = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Customer Name <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="text"
-                      name="customer"
-                      value={newQuotation.customer}
-                      onChange={handleChange}
-                      required
-                      className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      placeholder="Company name"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        name="customer"
+                        value={newQuotation.customer}
+                        onChange={(e) => {
+                          handleChange(e);
+                          setCustomerSearchTerm(e.target.value);
+                          setShowCustomerDropdown(true);
+                        }}
+                        onFocus={() => setShowCustomerDropdown(true)}
+                        required
+                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="Search or enter company name"
+                      />
+                      {showCustomerDropdown && (
+                        <div className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md overflow-auto border border-gray-300">
+                          <div className="sticky top-0 bg-white border-b border-gray-200">
+                            <div className="relative">
+                              <span className="absolute inset-y-0 left-0 pl-3 flex items-center">
+                                <span className="material-icons text-gray-500 text-sm">search</span>
+                              </span>
+                              <input
+                                type="text"
+                                className="w-full pl-10 py-2 text-sm border-0 focus:ring-0"
+                                placeholder="Type to search customers..."
+                                value={customerSearchTerm}
+                                onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </div>
+                          </div>
+                          {filteredCustomers.length === 0 ? (
+                            <div className="p-2 text-center text-gray-500 text-sm">
+                              No customers found
+                            </div>
+                          ) : (
+                            <ul className="py-1">
+                              {filteredCustomers.map((customer) => (
+                                <li
+                                  key={customer.id}
+                                  className="px-3 py-2 hover:bg-blue-50 cursor-pointer flex flex-col"
+                                  onClick={() => handleCustomerSelect(customer)}
+                                >
+                                  <span className="font-medium text-blue-700">{customer.name}</span>
+                                  <span className="text-sm text-gray-600">{customer.contactPerson}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex justify-end mt-1">
+                      <button 
+                        type="button" 
+                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
+                        onClick={() => setShowCustomerDropdown(!showCustomerDropdown)}
+                      >
+                        <span className="material-icons text-sm mr-1">list</span> 
+                        Browse customers
+                      </button>
+                    </div>
                   </div>
                   <div className="form-group">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1076,7 +1462,7 @@ const Quotations = () => {
               <button
                 type="submit"
                 onClick={() => setSubmissionType('draft')}
-                className="px-6 py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium rounded-md hover:from-blue-700 hover:to-blue-800 shadow-md hover:shadow-lg transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-center min-w-[160px]"
+                className="px-6 py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium rounded-md hover:from-blue-700 hover:to-blue-800 shadow-md hover:shadow-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center justify-center min-w-[160px]"
               >
                 <span className="material-icons mr-2">save</span>
                 Save as Draft
@@ -1084,7 +1470,7 @@ const Quotations = () => {
               
               <button
                 type="button"
-                onClick={handleSaveAndSend}
+                onClick={() => setSubmissionType('send')}
                 className="px-6 py-3.5 bg-gradient-to-r from-green-600 to-green-700 text-white font-medium rounded-md hover:from-green-700 hover:to-green-800 shadow-md hover:shadow-lg transition-all focus:outline-none focus:ring-2 focus:ring-green-500 flex items-center justify-center min-w-[160px]"
               >
                 <span className="material-icons mr-2">send</span>
@@ -1101,6 +1487,106 @@ const Quotations = () => {
               </button>
             </div>
           </form>
+        </div>
+      )}
+      
+      {/* Enquiry Lookup Modal */}
+      {showEnquiryLookup && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-medium">Select an Enquiry</h3>
+              <button 
+                onClick={() => setShowEnquiryLookup(false)} 
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <span className="material-icons">close</span>
+              </button>
+            </div>
+            
+            <div className="p-4 border-b border-gray-200">
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center">
+                  <span className="material-icons text-gray-500">search</span>
+                </span>
+                <input 
+                  type="text" 
+                  placeholder="Search by ID, customer, contact person, or product..." 
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+            
+            <div className="overflow-y-auto flex-1 p-1">
+              {enquiriesLoading ? (
+                <div className="flex justify-center items-center h-48">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                </div>
+              ) : enquiryLookupError ? (
+                <div className="flex flex-col items-center justify-center h-48 text-red-500">
+                  <span className="material-icons text-4xl mb-2">error_outline</span>
+                  <p>{enquiryLookupError}</p>
+                  <button
+                    onClick={fetchEnquiries}
+                    className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : filteredEnquiries.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-gray-500">
+                  <span className="material-icons text-4xl mb-2">search_off</span>
+                  <p>No enquiries found</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 p-2">
+                  {filteredEnquiries.map((enquiry) => (
+                    <div 
+                      key={enquiry._id || enquiry.id} 
+                      className="border border-gray-200 rounded-md p-3 hover:bg-blue-50 cursor-pointer transition-colors"
+                      onClick={() => handleEnquirySelect(enquiry)}
+                    >
+                      <div className="flex justify-between">
+                        <div>
+                          <span className="font-medium text-blue-700">{enquiry.id}</span>
+                          <p className="font-medium">{enquiry.customer}</p>
+                          <div className="text-sm text-gray-600">
+                            <p>Contact: {enquiry.contactPerson}</p>
+                            <p>{enquiry.product} • Qty: {enquiry.quantity}</p>
+                          </div>
+                        </div>
+                        <div>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            enquiry.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                            enquiry.status === 'Quoted' ? 'bg-yellow-100 text-yellow-800' :
+                            enquiry.status === 'Converted' ? 'bg-green-100 text-green-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {enquiry.status}
+                          </span>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {new Date(enquiry.date).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="border-t border-gray-200 p-4 flex justify-end">
+              <button
+                onClick={() => setShowEnquiryLookup(false)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md bg-white hover:bg-gray-50 mr-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
